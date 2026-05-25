@@ -23,3 +23,13 @@ test_signup.py
 
 # Logs
 *.log
+
+# Debug snapshots
+debug/
+
+# venv
+venv/
+
+# Proxy lists (sensitive credentials)
+proxy.txt
+proxy_fr.txt
