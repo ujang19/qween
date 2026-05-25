@@ -584,6 +584,30 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
         # Snapshot setelah Continue, sebelum goto api-keys
         debug_dump(page, "after_continue", run_idx, email_addr)
 
+        # Tunggu redirect setelah Continue. Sukses kalau URL pindah ke home.qwencloud.com.
+        # Kalau redirect ke sso/login.htm = session lost (race condition), bail out cepat.
+        try:
+            page.wait_for_function(
+                """() => {
+                    var u = location.href;
+                    return u.includes('home.qwencloud.com') ||
+                           u.includes('account.qwencloud.com') ||
+                           u.includes('/sso/login.htm');
+                }""",
+                timeout=20000
+            )
+        except Exception as e:
+            print(f"[STEP] redirect setelah Continue timeout: {e.__class__.__name__}")
+            debug_dump(page, "continue_no_redirect", run_idx, email_addr)
+
+        post_url = page.url
+        if "/sso/login.htm" in post_url or "Log In" in (page.title() or ""):
+            # Akun sudah dibuat di server, tapi browser session tidak forward.
+            # Tidak bisa recover di run ini tanpa OTP ulang. Bail out.
+            debug_dump(page, "bounced_to_login", run_idx, email_addr)
+            raise Exception(f"Continue bounced ke login (session lost): {post_url[:120]}")
+        print(f"[STEP] post-continue URL: {post_url[:80]}")
+
         # Force navigate ke halaman api-keys dengan retry robust
         for attempt in range(5):
             try:
@@ -595,6 +619,9 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
                 continue
             if "api-keys" in page.url and "chrome-error" not in page.url:
                 break
+            if "/sso/login.htm" in page.url:
+                debug_dump(page, f"api_keys_bounce_attempt{attempt+1}", run_idx, email_addr)
+                raise Exception(f"goto api-keys bounced ke login (session expired): {page.url[:120]}")
             time.sleep(3)
         human_sleep(1, 2)
 
