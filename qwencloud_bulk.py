@@ -683,9 +683,9 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
         if "api-keys" not in page.url:
             raise Exception(f"Gagal navigate ke api-keys, URL: {page.url[:80]}")
 
-        # Tunggu tombol Add API key muncul (max 20 detik), kalau gagal -> dump + reload + dump lagi
+        # Tunggu tombol Add API key muncul (max 60 detik) — rate-limit alibaba bikin page lambat render
         try:
-            page.wait_for_selector('button:has-text("Add API key")', timeout=20000)
+            page.wait_for_selector('button:has-text("Add API key")', timeout=60000)
         except Exception as e1:
             print(f"[STEP] Add API key tidak muncul (try-1): {e1.__class__.__name__}")
             debug_dump(page, "add_api_key_missing_try1", run_idx, email_addr)
@@ -696,7 +696,7 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
                 print(f"[STEP] networkidle setelah reload fail: {e.__class__.__name__}")
             human_sleep(2, 3)
             try:
-                page.wait_for_selector('button:has-text("Add API key")', timeout=20000)
+                page.wait_for_selector('button:has-text("Add API key")', timeout=60000)
             except Exception as e2:
                 print(f"[STEP] Add API key tidak muncul (try-2 setelah reload): {e2.__class__.__name__}")
                 debug_dump(page, "add_api_key_missing_try2", run_idx, email_addr)
@@ -725,7 +725,7 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
         human_sleep(0.5, 1)
 
         # Generate Key
-        page.click('button:has-text("Generate Key")', timeout=15000)
+        page.click('button:has-text("Generate Key")', timeout=30000)
         human_sleep(2, 3)
 
         # Ambil API Key
