@@ -162,9 +162,64 @@ def cleanup_email(email_id):
     except:
         pass
 
+# Proxy rotation buat bypass captcha
+PROXY_FILE = os.getenv("PROXY_FILE", "proxy.txt")
+_proxy_state_file = ".proxy_idx"
+_proxy_cache = None
+
+def _load_proxies():
+    global _proxy_cache
+    if _proxy_cache is not None:
+        return _proxy_cache
+    proxies = []
+    if os.path.exists(PROXY_FILE):
+        with open(PROXY_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    proxies.append(line)
+    _proxy_cache = proxies
+    return proxies
+
+def _next_proxy():
+    """Round-robin pick proxy dari proxy.txt, persisted ke .proxy_idx.
+    Pakai fcntl.flock supaya aman dipakai oleh multiple process bersamaan
+    (run_persistent + run_parallel + workers child)."""
+    proxies = _load_proxies()
+    if not proxies:
+        return None
+    import fcntl
+    # Buka rw, buat kalau belum ada
+    fd = os.open(_proxy_state_file, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        os.lseek(fd, 0, 0)
+        raw = os.read(fd, 32).decode().strip() or "0"
+        try:
+            idx = int(raw) % len(proxies)
+        except Exception:
+            idx = 0
+        chosen = proxies[idx]
+        next_idx = (idx + 1) % len(proxies)
+        os.lseek(fd, 0, 0)
+        os.ftruncate(fd, 0)
+        os.write(fd, str(next_idx).encode())
+        return chosen
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except Exception:
+            pass
+        os.close(fd)
+
 def bypass_captcha():
-    """Bypass captcha Alibaba via requests + proxy cr.fr, return login URL + cookies."""
-    proxy = 'http://a810789af3288983f034__cr.gb,us,sg,au:995f6c9c7606ffde@gw.dataimpulse.com:10000'
+    """Bypass captcha Alibaba via requests + proxy rotated dari proxy.txt, return login URL + cookies."""
+    proxy_str = _next_proxy()
+    if proxy_str is None:
+        # fallback hardcoded kalau proxy.txt kosong
+        proxy_str = 'a810789af3288983f034__cr.gb,us,sg,au:995f6c9c7606ffde@gw.dataimpulse.com:10000'
+    proxy = f'http://{proxy_str}'
+    print(f"[BYPASS] proxy={proxy_str.split('@')[-1]}")
     proxies = {'http': proxy, 'https': proxy}
     session = requests.Session()
     session.proxies = proxies

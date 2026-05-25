@@ -33,3 +33,4 @@ venv/
 # Proxy lists (sensitive credentials)
 proxy.txt
 proxy_fr.txt
+.proxy_idx
