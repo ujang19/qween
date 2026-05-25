@@ -1,0 +1,25 @@
+# Environment
+.env
+
+# Browser profiles
+profiles/
+
+# Screenshots
+*.png
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Local data
+api_keys.txt
+progress.json
+keys.txt
+
+# Test files
+test_otp.py
+test_signup.py
+
+# Logs
+*.log
