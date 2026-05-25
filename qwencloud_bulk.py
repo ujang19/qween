@@ -10,7 +10,7 @@ load_dotenv()
 # ── Config ────────────────────────────────────────────────────────────────────
 PINKGREEN_API_KEY = os.getenv("PINKGREEN_API_KEY")
 PINKGREEN_BASE    = os.getenv("PINKGREEN_BASE_URL", "https://pinkgreen.me")
-PINKGREEN_DOMAIN  = os.getenv("PINKGREEN_DOMAIN", "ascentia.site")
+PINKGREEN_DOMAIN  = os.getenv("PINKGREEN_DOMAIN", "pinkgreen.me")
 PINKGREEN_HEADERS = {"X-API-Key": PINKGREEN_API_KEY, "Content-Type": "application/json"}
 
 TURSO_URL     = os.getenv("TURSO_URL")
