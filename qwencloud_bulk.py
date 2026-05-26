@@ -111,7 +111,7 @@ def db_save(email, api_key):
 
 # ── Pinkgreen Email ───────────────────────────────────────────────────────────
 def make_email():
-    name = f"user{random.randint(100,999)}{int(time.time())%100}"
+    name = f"user{int(time.time())}{random.randint(10000,99999)}"
     r = requests.post(f"{PINKGREEN_BASE}/api/emails/generate",
                       headers=PINKGREEN_HEADERS,
                       json={"name": name, "domain": PINKGREEN_DOMAIN, "expiryTime": 0},
