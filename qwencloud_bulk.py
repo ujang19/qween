@@ -669,18 +669,27 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
         already_on_home = "home.qwencloud.com" in post_url
         if already_on_home:
             print("[STEP] sudah di home.qwencloud.com, skip explicit goto api-keys")
-            # Pastikan path /api-keys; kalau belum, navigate via SPA router (pushState)
+            # JANGAN tunggu networkidle (bisa 30s+) karena session token short-lived.
+            # Langsung tunggu Add API key button muncul (max 60s) atau "Failed" page.
+            human_sleep(0.5, 1)
+            # Cek apakah page nampilkan error 'Failed'
             try:
-                page.wait_for_load_state("networkidle", timeout=30000)
+                page_text = page.inner_text("body", timeout=5000) or ""
+                if "Failed" in page_text and "Go to Home Page" in page_text:
+                    debug_dump(page, "home_page_failed_state", run_idx, email_addr)
+                    raise Exception(f"home.qwencloud.com returned 'Failed' page (session token rejected)")
             except Exception as e:
-                print(f"[STEP] networkidle wait fail: {e.__class__.__name__}")
+                if "home.qwencloud.com returned 'Failed'" in str(e):
+                    raise
+                # else: text fetch failed but page might still be loading, lanjut
+                pass
             if "/api-keys" not in post_url:
-                # SPA navigation (push history state instead of full goto)
+                # SPA navigation
                 try:
                     page.evaluate("() => { history.pushState({}, '', '/api-keys'); window.dispatchEvent(new PopStateEvent('popstate')); }")
-                    page.wait_for_load_state("networkidle", timeout=15000)
+                    human_sleep(1, 2)
                 except Exception as e:
-                    print(f"[STEP] SPA push to /api-keys fail, fallback goto: {e.__class__.__name__}")
+                    print(f"[STEP] SPA push fail, fallback goto: {e.__class__.__name__}")
                     page.goto("https://home.qwencloud.com/api-keys", timeout=60000, wait_until="domcontentloaded")
         else:
             # Bukan di home (mungkin masih di sso/register karena Continue gak redirect).
