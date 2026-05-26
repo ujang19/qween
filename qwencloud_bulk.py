@@ -744,9 +744,29 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
                     human_sleep(2, 3)
                 except Exception as e:
                     print(f"[STEP] Navigate ke home.qwencloud.com fail: {e.__class__.__name__}")
-            
+
             if "api-keys" not in page.url:
                 raise Exception(f"Gagal navigate ke api-keys, URL: {page.url[:80]}")
+
+        # === FIX #5: Tunggu loading spinner hilang dulu ===
+        # Screenshot menunjukkan page masih 'Loading...' saat tombol dicari
+        print("[STEP] Tunggu page content selesai load...")
+        try:
+            # Tunggu spinner/loading hilang
+            page.wait_for_function(
+                """() => {
+                    var loading = document.querySelector('.loading, [class*="loading"], [class*="Loading"]');
+                    var spinner = document.querySelector('.spinner, [class*="spinner"]');
+                    var loadingText = Array.from(document.querySelectorAll('*')).find(
+                        el => el.children.length === 0 && (el.textContent || '').trim() === 'Loading...'
+                    );
+                    return !loading && !spinner && !loadingText;
+                }""",
+                timeout=30000
+            )
+            print("[STEP] Loading selesai")
+        except Exception as e:
+            print(f"[STEP] Loading wait timeout: {e.__class__.__name__}, lanjut saja")
 
         # Tunggu tombol Add API key muncul (max 60 detik) — rate-limit alibaba bikin page lambat render
         try:
