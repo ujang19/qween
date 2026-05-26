@@ -572,6 +572,27 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
         except Exception:
             pass
 
+        # === FIX #1: Wait for form ready sebelum Continue ===
+        # Tunggu sampai checkbox count > 0 (form sudah render)
+        print("[STEP] Menunggu form ready...")
+        try:
+            page.wait_for_function(
+                """() => {
+                    var checkboxes = document.querySelectorAll('input[type="checkbox"]');
+                    var combo = document.querySelector('input[role="combobox"]');
+                    return checkboxes.length > 0 && combo !== null;
+                }""",
+                timeout=10000
+            )
+            print("[STEP] Form ready (checkbox + combo tersedia)")
+        except Exception as e:
+            print(f"[STEP] Form belum ready setelah 10s: {e.__class__.__name__}")
+            debug_dump(page, "form_not_ready", run_idx, email_addr)
+            # Tidak fatal, lanjut saja
+
+        # Extra wait untuk React state update
+        human_sleep(0.5, 1)
+
         # Continue: tunggu sampai tombol enabled, baru klik
         clicked_continue = False
         continue_btn = page.locator('button[type="submit"]:has-text("Continue")').first
@@ -713,18 +734,46 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
         if "api-keys" not in page.url:
             raise Exception(f"Gagal navigate ke api-keys, URL: {page.url[:80]}")
 
+        # === FIX #2: Verify URL benar sebelum cari Add API key ===
+        if "api-keys" not in page.url:
+            # Jika URL mengarah ke domain yang salah, coba navigate ulang
+            if "account.alibabacloud.com" in page.url and "home.qwencloud.com" not in page.url:
+                print("[STEP] URL salah domain, navigate ke home.qwencloud.com/api-keys")
+                try:
+                    page.goto("https://home.qwencloud.com/api-keys", timeout=60000, wait_until="domcontentloaded")
+                    human_sleep(2, 3)
+                except Exception as e:
+                    print(f"[STEP] Navigate ke home.qwencloud.com fail: {e.__class__.__name__}")
+            
+            if "api-keys" not in page.url:
+                raise Exception(f"Gagal navigate ke api-keys, URL: {page.url[:80]}")
+
         # Tunggu tombol Add API key muncul (max 60 detik) — rate-limit alibaba bikin page lambat render
         try:
             page.wait_for_selector('button:has-text("Add API key")', timeout=60000)
         except Exception as e1:
             print(f"[STEP] Add API key tidak muncul (try-1): {e1.__class__.__name__}")
             debug_dump(page, "add_api_key_missing_try1", run_idx, email_addr)
+            
+            # === FIX #3: Session lost detection ===
+            # Cek apakah redirect ke login page
+            current_url = page.url
+            if "/sso/login" in current_url or "login.htm" in current_url:
+                debug_dump(page, "session_lost_redirect", run_idx, email_addr)
+                raise Exception(f"Session lost, redirect ke login: {current_url[:120]}")
+            
             page.reload()
             try:
                 page.wait_for_load_state("networkidle", timeout=20000)
             except Exception as e:
                 print(f"[STEP] networkidle setelah reload fail: {e.__class__.__name__}")
             human_sleep(2, 3)
+            
+            # Cek lagi untuk session lost setelah reload
+            if "/sso/login" in page.url or "login.htm" in page.url:
+                debug_dump(page, "session_lost_after_reload", run_idx, email_addr)
+                raise Exception(f"Session lost setelah reload: {page.url[:120]}")
+            
             try:
                 page.wait_for_selector('button:has-text("Add API key")', timeout=60000)
             except Exception as e2:
@@ -754,8 +803,25 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
         }""")
         human_sleep(0.5, 1)
 
-        # Generate Key
-        page.click('button:has-text("Generate Key")', timeout=30000)
+        # === FIX #4: Handle overlay pada Generate Key ===
+        # Coba klik dengan force=True untuk bypass overlay
+        gen_key_btn = page.locator('button:has-text("Generate Key")')
+        try:
+            gen_key_btn.click(force=True, timeout=10000)
+        except Exception as e:
+            print(f"[STEP] Generate Key click fail, coba dismiss overlay: {e.__class__.__name__}")
+            # Coba dismiss overlay dengan Escape
+            try:
+                page.keyboard.press("Escape")
+                human_sleep(0.3, 0.5)
+            except:
+                pass
+            # Coba klik lagi
+            try:
+                gen_key_btn.click(force=True, timeout=10000)
+            except:
+                # Fallback: klik via JS
+                page.evaluate('document.querySelectorAll("button").forEach(b => { if(b.innerText.includes("Generate Key")) b.click(); })')
         human_sleep(2, 3)
 
         # Ambil API Key
