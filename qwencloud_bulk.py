@@ -131,6 +131,7 @@ def wait_otp(email_id, max_wait=60):
             "115455","925380","000342","000425","000406","000207",
             "000422","000490","000404","000312"]
     attempt = 0
+    seen_ids = set()  # track message ID yang sudah diproses
     while time.time() - start < max_wait:
         attempt += 1
         elapsed = int(time.time() - start)
@@ -139,16 +140,24 @@ def wait_otp(email_id, max_wait=60):
             r = requests.get(f"{PINKGREEN_BASE}/api/emails/{email_id}",
                              headers=PINKGREEN_HEADERS, timeout=10)
             msgs = r.json().get("messages", [])
+            # Sort by newest first kalau ada field timestamp
             for m in msgs:
+                mid = m.get("id")
+                if mid in seen_ids:
+                    continue  # skip pesan yang sudah pernah diproses
                 subj = m.get("subject", "").lower()
                 if "verify" in subj or "verification" in subj or "code" in subj or "alibaba" in subj:
-                    mr = requests.get(f"{PINKGREEN_BASE}/api/emails/{email_id}/{m['id']}",
+                    seen_ids.add(mid)
+                    mr = requests.get(f"{PINKGREEN_BASE}/api/emails/{email_id}/{mid}",
                                       headers=PINKGREEN_HEADERS, timeout=10)
                     html = mr.json()["message"].get("html", "")
                     for candidate in re.findall(r">(\d{6})<", html):
                         if candidate not in skip:
                             print(f"\n[OTP] {candidate}")
                             return candidate
+                else:
+                    # Mark non-OTP emails sebagai seen juga supaya tidak di-re-check
+                    seen_ids.add(mid)
         except Exception as e:
             print(f"\n[OTP] Error polling: {e}")
         time.sleep(4)
