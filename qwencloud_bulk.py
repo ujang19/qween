@@ -663,21 +663,42 @@ def run_signup(email_addr, email_id, profile_dir, run_idx=None):
             raise Exception(f"Continue bounced ke login (session lost): {post_url[:120]}")
         print(f"[STEP] post-continue URL: {post_url[:80]}")
 
-        # Force navigate ke halaman api-keys dengan retry robust
-        for attempt in range(5):
+        # Kalau sudah di home.qwencloud.com (api-keys atau dashboard), JANGAN re-navigate.
+        # Re-navigate kadang kehilangan session cookie -> bounce ke login.
+        # Cukup tunggu page mount.
+        already_on_home = "home.qwencloud.com" in post_url
+        if already_on_home:
+            print("[STEP] sudah di home.qwencloud.com, skip explicit goto api-keys")
+            # Pastikan path /api-keys; kalau belum, navigate via SPA router (pushState)
             try:
-                page.goto("https://home.qwencloud.com/api-keys", timeout=60000, wait_until="domcontentloaded")
                 page.wait_for_load_state("networkidle", timeout=30000)
             except Exception as e:
-                print(f"[RETRY] goto api-keys attempt {attempt+1}: {e.__class__.__name__}")
+                print(f"[STEP] networkidle wait fail: {e.__class__.__name__}")
+            if "/api-keys" not in post_url:
+                # SPA navigation (push history state instead of full goto)
+                try:
+                    page.evaluate("() => { history.pushState({}, '', '/api-keys'); window.dispatchEvent(new PopStateEvent('popstate')); }")
+                    page.wait_for_load_state("networkidle", timeout=15000)
+                except Exception as e:
+                    print(f"[STEP] SPA push to /api-keys fail, fallback goto: {e.__class__.__name__}")
+                    page.goto("https://home.qwencloud.com/api-keys", timeout=60000, wait_until="domcontentloaded")
+        else:
+            # Bukan di home (mungkin masih di sso/register karena Continue gak redirect).
+            # Force navigate ke api-keys.
+            for attempt in range(5):
+                try:
+                    page.goto("https://home.qwencloud.com/api-keys", timeout=60000, wait_until="domcontentloaded")
+                    page.wait_for_load_state("networkidle", timeout=30000)
+                except Exception as e:
+                    print(f"[RETRY] goto api-keys attempt {attempt+1}: {e.__class__.__name__}")
+                    time.sleep(3)
+                    continue
+                if "api-keys" in page.url and "chrome-error" not in page.url:
+                    break
+                if "/sso/login.htm" in page.url:
+                    debug_dump(page, f"api_keys_bounce_attempt{attempt+1}", run_idx, email_addr)
+                    raise Exception(f"goto api-keys bounced ke login (session expired): {page.url[:120]}")
                 time.sleep(3)
-                continue
-            if "api-keys" in page.url and "chrome-error" not in page.url:
-                break
-            if "/sso/login.htm" in page.url:
-                debug_dump(page, f"api_keys_bounce_attempt{attempt+1}", run_idx, email_addr)
-                raise Exception(f"goto api-keys bounced ke login (session expired): {page.url[:120]}")
-            time.sleep(3)
         human_sleep(1, 2)
 
         if "api-keys" not in page.url:
